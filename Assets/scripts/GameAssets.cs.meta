@@ -3,7 +3,14 @@ guid: dc9b8236a327ed74cb4a41a8548bc8b4
 MonoImporter:
   externalObjects: {}
   serializedVersion: 2
-  defaultReferences: []
+  defaultReferences:
+  - pipeHeadSprite: {instanceID: 0}
+  - pfPipeHead: {instanceID: 0}
+  - pfPipeBody: {instanceID: 0}
+  - pfGround: {instanceID: 0}
+  - pfCloud_1: {instanceID: 0}
+  - pfCloud_2: {instanceID: 0}
+  - pfCloud_3: {instanceID: 0}
   executionOrder: -200
   icon: {instanceID: 0}
   userData: 
