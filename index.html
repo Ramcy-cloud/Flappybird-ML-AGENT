@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flappy Bird — ML Agent Demo</title>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.0/dist/ort.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d1b2a; --card: #1b2a3b;
+      --blue: #00b4d8; --green: #06d6a0;
+      --yellow: #ffd166; --red: #ef476f; --gray: #b0c4d8;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--bg);
+      font-family: 'Segoe UI', sans-serif;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: 100vh; color: white; padding: 16px;
+    }
+    h1 { font-size: 1.3rem; margin-bottom: 14px; color: var(--blue); letter-spacing: 2px; text-transform: uppercase; }
+    #wrapper { display: flex; gap: 18px; align-items: flex-start; }
+    canvas { border: 2px solid var(--blue); border-radius: 8px; display: block; }
+    #panel { width: 250px; display: flex; flex-direction: column; gap: 10px; }
+    .card { background: var(--card); border-radius: 8px; padding: 12px; border-top: 3px solid var(--blue); }
+    .card-title { font-size: 0.65rem; color: var(--gray); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; }
+    .score-row { display: flex; gap: 16px; }
+    .score-item { flex: 1; }
+    .score-label { font-size: 0.62rem; color: var(--gray); }
+    .score-val { font-size: 1.9rem; font-weight: bold; color: var(--blue); }
+    .obs-row { margin-bottom: 7px; }
+    .obs-label { display: flex; justify-content: space-between; font-size: 0.68rem; margin-bottom: 3px; }
+    .obs-name { color: var(--gray); }
+    .obs-value { color: white; font-weight: bold; }
+    .obs-track { background: #0d1b2a; border-radius: 4px; height: 7px; overflow: hidden; }
+    .obs-fill { height: 100%; border-radius: 4px; transition: width 0.08s; }
+    #action-card { border-top-color: var(--green); text-align: center; }
+    #action-label { font-size: 1.4rem; font-weight: bold; }
+    #action-sub { font-size: 0.7rem; color: var(--gray); margin-top: 3px; }
+    #status-card { border-top-color: var(--yellow); }
+    #model-status { font-size: 0.82rem; color: var(--green); font-weight: bold; }
+    #ep-info { font-size: 0.78rem; color: var(--gray); margin-top: 5px; }
+    #speed-btns { display: flex; gap: 6px; margin-top: 10px; }
+    .spd { flex: 1; padding: 5px; border: 1px solid var(--blue); background: transparent; color: var(--blue); border-radius: 4px; cursor: pointer; font-size: 0.78rem; transition: all 0.15s; }
+    .spd.active, .spd:hover { background: var(--blue); color: #0d1b2a; font-weight: bold; }
+    #footer { margin-top: 12px; font-size: 0.7rem; color: var(--gray); }
+    #footer a { color: var(--blue); text-decoration: none; }
+  </style>
+</head>
+<body>
+<h1>🐦 Flappy Bird — ML Agent</h1>
+<div id="wrapper">
+  <canvas id="game" width="600" height="480"></canvas>
+  <div id="panel">
+
+    <div class="card">
+      <div class="card-title">Performance</div>
+      <div class="score-row">
+        <div class="score-item"><div class="score-label">SCORE</div><div class="score-val" id="ui-score">0</div></div>
+        <div class="score-item"><div class="score-label">BEST</div><div class="score-val" id="ui-best">0</div></div>
+      </div>
+      <div id="ep-info">Episode: 1</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Observations</div>
+      <div class="obs-row">
+        <div class="obs-label"><span class="obs-name">Bird Y</span><span class="obs-value" id="v0">0.00</span></div>
+        <div class="obs-track"><div class="obs-fill" id="b0" style="background:var(--blue);width:50%"></div></div>
+      </div>
+      <div class="obs-row">
+        <div class="obs-label"><span class="obs-name">Velocity Y</span><span class="obs-value" id="v1">0.00</span></div>
+        <div class="obs-track"><div class="obs-fill" id="b1" style="background:var(--green);width:50%"></div></div>
+      </div>
+      <div class="obs-row">
+        <div class="obs-label"><span class="obs-name">Pipe Distance</span><span class="obs-value" id="v2">0.00</span></div>
+        <div class="obs-track"><div class="obs-fill" id="b2" style="background:var(--yellow);width:80%"></div></div>
+      </div>
+      <div class="obs-row">
+        <div class="obs-label"><span class="obs-name">Gap Y</span><span class="obs-value" id="v3">0.00</span></div>
+        <div class="obs-track"><div class="obs-fill" id="b3" style="background:var(--red);width:50%"></div></div>
+      </div>
+    </div>
+
+    <div class="card" id="action-card">
+      <div class="card-title">Action</div>
+      <div id="action-label">⏸ WAIT</div>
+      <div id="action-sub">do nothing</div>
+    </div>
+
+    <div class="card" id="status-card">
+      <div class="card-title">Model</div>
+      <div id="model-status">⏳ Loading...</div>
+      <div id="speed-btns">
+        <button class="spd active" onclick="setSpeed(1)">1×</button>
+        <button class="spd" onclick="setSpeed(3)">3×</button>
+        <button class="spd" onclick="setSpeed(8)">8×</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+<div id="footer">
+  <a href="https://github.com/Ramcy-cloud/Flappybird-ML-AGENT" target="_blank">github.com/Ramcy-cloud/Flappybird-ML-AGENT</a>
+  &nbsp;·&nbsp; PPO · Unity ML-Agents · 5M steps
+</div>
+
+<script>
+  ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.0/dist/';
+
+  // ── Constants (matching Unity Birdagent.cs) ─────────────────────────────
+  const CW = 600, CH = 480;
+  const Y_MAX = 50, Y_MIN = -47;
+  const JUMP = 90, GRAV = 230;
+  const PIPE_SPD = 65, PIPE_HW = 4;   // game units
+  const BIRD_CX = 120;
+  const SCALE = CH / (Y_MAX - Y_MIN);  // px per game unit (~4.95)
+  const SPAWN_DIST = 85;               // game units ahead
+
+  const DIFFS = [
+    { n: 0,  gap: 50, t: 1.4 },
+    { n: 5,  gap: 40, t: 1.3 },
+    { n: 12, gap: 33, t: 1.1 },
+    { n: 24, gap: 24, t: 1.0 },
+  ];
+
+  // ── Canvas ──────────────────────────────────────────────────────────────
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  function cy(y)  { return CH * (1 - (y - Y_MIN) / (Y_MAX - Y_MIN)); }
+  function cx(rx) { return BIRD_CX + rx * SCALE; }
+
+  // ── State ───────────────────────────────────────────────────────────────
+  let bird = { y: 0, vy: 0, angle: 0 };
+  let pipes = [], score = 0, best = 0, episode = 1;
+  let pipesScored = 0, spawnTimer = 1.0;
+  let action = 0, lastObs = [0, 0, 0, 0];
+  let speed = 1, bgOff = 0;
+
+  // ── ONNX ────────────────────────────────────────────────────────────────
+  let sess = null, ruleMode = false, inferring = false;
+
+  async function loadModel() {
+    try {
+      sess = await ort.InferenceSession.create('./FlappyBird.onnx');
+      document.getElementById('model-status').textContent = '🤖 Neural Network';
+      document.getElementById('model-status').style.color = 'var(--green)';
+    } catch (e) {
+      ruleMode = true;
+      document.getElementById('model-status').textContent = '📐 Rule-Based AI';
+      document.getElementById('model-status').style.color = 'var(--yellow)';
+    }
+  }
+
+  async function infer(obs) {
+    if (ruleMode || !sess) return fallback(obs);
+    try {
+      const o = new ort.Tensor('float32', Float32Array.from(obs), [1, 4]);
+      const m = new ort.Tensor('float32', new Float32Array([1, 1]), [1, 2]);
+      const r = await sess.run({ obs_0: o, action_masks: m });
+      return Number(r.discrete_actions.data[0]);
+    } catch { return fallback(obs); }
+  }
+
+  function fallback(obs) {
+    // Simple heuristic that mimics the trained behavior
+    const [bY, bV, , gY] = obs;
+    if (bY < gY - 0.08 && bV < 0.25) return 1;
+    if (bY < gY - 0.22) return 1;
+    return 0;
+  }
+
+  // ── Game logic ──────────────────────────────────────────────────────────
+  function diff() {
+    let d = DIFFS[0];
+    for (const x of DIFFS) if (pipesScored >= x.n) d = x;
+    return d;
+  }
+
+  function spawn() {
+    const gapY = Math.random() * 44 - 20;
+    pipes.push({ x: SPAWN_DIST, gapY, gap: diff().gap, passed: false });
+  }
+
+  function getObs() {
+    const nxt = pipes.find(p => p.x + PIPE_HW > 0);
+    return [
+      bird.y / Y_MAX,
+      bird.vy / JUMP,
+      (nxt ? Math.max(0, nxt.x) : SPAWN_DIST) / 100,
+      (nxt ? nxt.gapY : 0) / Y_MAX,
+    ];
+  }
+
+  function reset() {
+    bird = { y: 0, vy: 0, angle: 0 };
+    pipes = []; score = 0; pipesScored = 0;
+    spawnTimer = 1.0; action = 0;
+  }
+
+  function update(dt) {
+    if (action === 1) bird.vy = JUMP;
+    bird.vy -= GRAV * dt;
+    bird.y  += bird.vy * dt;
+    bird.angle = Math.max(-30, Math.min(80, Math.atan2(bird.vy, JUMP) * 180 / Math.PI));
+
+    for (const p of pipes) p.x -= PIPE_SPD * dt;
+    pipes = pipes.filter(p => p.x > -20);
+
+    spawnTimer -= dt;
+    if (spawnTimer <= 0) { spawnTimer = diff().t; spawn(); }
+
+    for (const p of pipes) {
+      if (!p.passed && p.x < -PIPE_HW) {
+        p.passed = true; score++; pipesScored++;
+        if (score > best) best = score;
+      }
+    }
+
+    bgOff = (bgOff + 30 * dt) % CW;
+
+    // Death check
+    const hit = pipes.find(p => Math.abs(p.x) < PIPE_HW + 2.8);
+    const dead = bird.y < Y_MIN || bird.y > Y_MAX ||
+      (hit && (bird.y < hit.gapY - hit.gap / 2 || bird.y > hit.gapY + hit.gap / 2));
+    if (dead) { episode++; reset(); }
+  }
+
+  // ── Drawing ─────────────────────────────────────────────────────────────
+  function drawBg() {
+    const g = ctx.createLinearGradient(0, 0, 0, CH);
+    g.addColorStop(0, '#0d1b2a'); g.addColorStop(1, '#1b3a5c');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, CW, CH);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    [[55,28],[130,58],[210,22],[315,44],[430,18],[510,52],[565,33],
+     [85,98],[195,86],[360,77],[465,92],[545,72],[35,118],[270,107],
+     [415,128],[525,138],[145,148],[340,158],[475,152],[75,198]
+    ].forEach(([x,y]) => {
+      ctx.beginPath();
+      ctx.arc((x + bgOff * 0.25) % CW, y, 1.4, 0, Math.PI*2);
+      ctx.fill();
+    });
+
+    ctx.fillStyle = '#1a3a1a'; ctx.fillRect(0, CH-28, CW, 28);
+    ctx.fillStyle = '#2d5a2d'; ctx.fillRect(0, CH-28, CW, 8);
+    ctx.fillStyle = '#3a7a3a';
+    for (let i = 0; i < CW; i += 38)
+      ctx.fillRect((i + bgOff * 1.8) % CW, CH-28, 18, 8);
+  }
+
+  function drawPipe(p) {
+    const px = cx(p.x), gt = cy(p.gapY + p.gap / 2), gb = cy(p.gapY - p.gap / 2);
+    const pw = PIPE_HW * 2 * SCALE, cw = pw + 12, ch = 18;
+    const cl = px - cw / 2;
+
+    ctx.fillStyle = '#2d7a3e';
+    ctx.fillRect(px - pw/2, 0, pw, gt - ch);
+    ctx.fillStyle = '#3aad52'; ctx.fillRect(cl, gt - ch, cw, ch);
+    ctx.fillStyle = '#4dc96b'; ctx.fillRect(cl, gt - ch, cw, 3);
+
+    ctx.fillStyle = '#2d7a3e';
+    ctx.fillRect(px - pw/2, gb + ch, pw, CH - 28 - gb - ch);
+    ctx.fillStyle = '#3aad52'; ctx.fillRect(cl, gb, cw, ch);
+    ctx.fillStyle = '#4dc96b'; ctx.fillRect(cl, gb + ch - 3, cw, 3);
+
+    if (!p.passed && p.x + PIPE_HW > 0 && p.x < 28) {
+      ctx.strokeStyle = 'rgba(0,180,216,0.3)'; ctx.lineWidth = 3;
+      ctx.strokeRect(cl - 2, gt - ch - 2, cw + 4, gb - gt + ch * 2 + 4);
+    }
+  }
+
+  function drawBird() {
+    const by = cy(bird.y), r = 14;
+    ctx.save(); ctx.translate(BIRD_CX, by);
+    ctx.rotate(bird.angle * Math.PI / 180);
+
+    ctx.fillStyle = '#f9c74f';
+    ctx.beginPath(); ctx.ellipse(0, 0, r, r * 0.85, 0, 0, Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = '#f3a712';
+    ctx.beginPath();
+    ctx.ellipse(-4, action === 1 ? -5 : 3, r*0.5, r*0.28, -0.3, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle = 'white';
+    ctx.beginPath(); ctx.arc(5, -3, 5, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#1a1a2e';
+    ctx.beginPath(); ctx.arc(6, -3, 2.5, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'white';
+    ctx.beginPath(); ctx.arc(7, -4, 1, 0, Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = '#ff6b35';
+    ctx.beginPath(); ctx.moveTo(10,1); ctx.lineTo(17,3); ctx.lineTo(10,5); ctx.closePath(); ctx.fill();
+
+    ctx.fillStyle = 'rgba(255,100,100,0.28)';
+    ctx.beginPath(); ctx.ellipse(3, 4, 5, 3, 0, 0, Math.PI*2); ctx.fill();
+
+    if (action === 1) {
+      ctx.strokeStyle = 'rgba(0,180,216,0.5)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(-r, 0); ctx.lineTo(-r-22, 5); ctx.stroke();
+      ctx.strokeStyle = 'rgba(0,180,216,0.2)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-r, 6); ctx.lineTo(-r-15, 11); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawHUD() {
+    ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.fillRect(8, 8, 115, 34);
+    ctx.fillStyle = '#00b4d8'; ctx.font = 'bold 20px Segoe UI';
+    ctx.fillText(`Score: ${score}`, 16, 32);
+    if (speed > 1) {
+      ctx.fillStyle = 'rgba(255,209,102,0.18)'; ctx.fillRect(CW-56, 8, 48, 26);
+      ctx.fillStyle = '#ffd166'; ctx.font = 'bold 15px Segoe UI';
+      ctx.fillText(`${speed}×`, CW-42, 26);
+    }
+  }
+
+  function render() {
+    drawBg();
+    pipes.forEach(drawPipe);
+    drawBird();
+    drawHUD();
+  }
+
+  // ── UI updates ──────────────────────────────────────────────────────────
+  function updateUI(obs) {
+    document.getElementById('ui-score').textContent = score;
+    document.getElementById('ui-best').textContent = best;
+    document.getElementById('ep-info').textContent = `Episode: ${episode}`;
+
+    const bars = [
+      { id:'0', v: obs[0], lo:-1, hi:1, c:'var(--blue)' },
+      { id:'1', v: obs[1], lo:-1, hi:1, c:'var(--green)' },
+      { id:'2', v: obs[2], lo: 0, hi:1, c:'var(--yellow)' },
+      { id:'3', v: obs[3], lo:-1, hi:1, c:'var(--red)' },
+    ];
+    bars.forEach(({ id, v, lo, hi }) => {
+      const pct = Math.max(2, Math.min(100, ((v - lo) / (hi - lo)) * 100));
+      document.getElementById('b' + id).style.width = pct + '%';
+      document.getElementById('v' + id).textContent = v.toFixed(2);
+    });
+
+    const lbl = document.getElementById('action-label');
+    const sub = document.getElementById('action-sub');
+    if (action === 1) {
+      lbl.textContent = '⬆️ JUMP'; lbl.style.color = 'var(--green)';
+      sub.textContent = 'apply upward velocity';
+    } else {
+      lbl.textContent = '⏸ WAIT'; lbl.style.color = 'var(--gray)';
+      sub.textContent = 'do nothing';
+    }
+  }
+
+  function setSpeed(s) {
+    speed = s;
+    document.querySelectorAll('.spd').forEach((b, i) => b.classList.toggle('active', [1,3,8][i] === s));
+  }
+
+  // ── Game loop ───────────────────────────────────────────────────────────
+  let lastT = null;
+
+  function loop(ts) {
+    if (!lastT) lastT = ts;
+    const elapsed = Math.min((ts - lastT) / 1000, 0.05);
+    lastT = ts;
+    const dt = elapsed / speed;
+
+    for (let i = 0; i < speed; i++) {
+      const obs = getObs();
+      lastObs = obs;
+      if (!inferring) {
+        inferring = true;
+        infer(obs).then(a => { action = a; inferring = false; });
+      }
+      update(dt);
+    }
+
+    render();
+    updateUI(lastObs);
+    requestAnimationFrame(loop);
+  }
+
+  async function init() {
+    reset();
+    await loadModel();
+    requestAnimationFrame(loop);
+  }
+
+  init();
+</script>
+</body>
+</html>
