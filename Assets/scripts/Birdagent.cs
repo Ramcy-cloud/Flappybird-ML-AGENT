@@ -42,7 +42,7 @@ public class Bird : Agent
         isDead = false;
         hasStarted = false;
 
-        transform.position = new Vector3(0f, 0f, 0f);
+        transform.localPosition = new Vector3(0f, 0f, 0f);
         transform.rotation = Quaternion.identity;
         birdRigidbody2D.linearVelocity = Vector2.zero;
         birdRigidbody2D.angularVelocity = 0f;

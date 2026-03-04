@@ -191,7 +191,7 @@ public class Level : MonoBehaviour
             float totalHeight = CAMERA_ORTHO_SIZE * 2f;
             float maxHeight = totalHeight - gapSize * .5f - heightEdgeLimit;
             float height = Random.Range(minHeight, maxHeight);
-            CreateGapPipes(height, gapSize, PIPE_SPAWN_X_POSITION);
+            CreateGapPipes(height, gapSize, transform.position.x + PIPE_SPAWN_X_POSITION);
         }
     }
 
@@ -200,14 +200,14 @@ public class Level : MonoBehaviour
         for (int i = 0; i < pipeList.Count; i++)
         {
             Pipe pipe = pipeList[i];
-            bool isToTheRightOfBird = pipe.GetXPosition() > BIRD_X_POSITION;
+            bool isToTheRightOfBird = pipe.GetXPosition() > transform.position.x + BIRD_X_POSITION;
             pipe.Move();
             if (isToTheRightOfBird && pipe.GetXPosition() <= BIRD_X_POSITION && pipe.IsBottom())
             {
                 pipesPassedCount++;
                 SoundManager.PlaySound(SoundManager.Sound.Score);
             }
-            if (pipe.GetXPosition() < PIPE_DESTROY_X_POSITION)
+            if (pipe.GetXPosition() < transform.position.x + PIPE_DESTROY_X_POSITION)
             {
                 pipe.DestroySelf();
                 pipeList.Remove(pipe);
