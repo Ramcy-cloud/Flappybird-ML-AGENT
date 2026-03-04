@@ -50,9 +50,9 @@ public class Bird : Agent
         if (Level.GetInstance() != null)
             Level.GetInstance().ResetLevel();
 
-        if (IsTraining)
+        if (IsTraining || behaviorParameters.BehaviorType == BehaviorType.InferenceOnly)
         {
-            // Mode entraînement : démarre immédiatement
+            // Training or Inference: start immediately
             birdRigidbody2D.bodyType = RigidbodyType2D.Dynamic;
             hasStarted = true;
             if (OnStartedPlaying != null)
@@ -60,7 +60,7 @@ public class Bird : Agent
         }
         else
         {
-            // Mode manuel : attend le premier clic/espace
+            // Manual/Heuristic mode: wait for first click/space
             birdRigidbody2D.bodyType = RigidbodyType2D.Static;
         }
     }
