@@ -91,7 +91,6 @@ public class Bird : Agent
         {
             if (!hasStarted && !IsTraining)
             {
-                // Premier saut en mode manuel = démarre le jeu
                 hasStarted = true;
                 birdRigidbody2D.bodyType = RigidbodyType2D.Dynamic;
                 if (OnStartedPlaying != null)
@@ -103,7 +102,18 @@ public class Bird : Agent
         if (hasStarted)
         {
             transform.eulerAngles = new Vector3(0, 0, birdRigidbody2D.linearVelocity.y * .15f);
+
+            // Survival reward
             AddReward(0.01f);
+
+            // Gap alignment reward — guide bird toward pipe gap center
+            GameObject nextPipe = FindNextPipe();
+            if (nextPipe != null)
+            {
+                float distToGap = Mathf.Abs(transform.position.y - nextPipe.transform.position.y);
+                float normalizedDist = distToGap / (Y_MAX - Y_MIN);
+                AddReward(0.005f * (1f - normalizedDist));
+            }
 
             if (transform.position.y < Y_MIN || transform.position.y > Y_MAX)
                 Die();
@@ -143,7 +153,7 @@ public class Bird : Agent
         if (OnDied != null)
             OnDied(this, EventArgs.Empty);
 
-        AddReward(-1f);
+        AddReward(-2f);
 
         if (IsTraining)
         {
