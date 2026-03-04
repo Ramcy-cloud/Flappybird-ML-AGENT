@@ -2,8 +2,8 @@ behaviors:
   FlappyBird:
     trainer_type: ppo
     hyperparameters:
-      batch_size: 128
-      buffer_size: 20480
+      batch_size: 512
+      buffer_size: 81920
       learning_rate: 3.0e-4
       learning_rate_schedule: linear
       beta: 5.0e-3

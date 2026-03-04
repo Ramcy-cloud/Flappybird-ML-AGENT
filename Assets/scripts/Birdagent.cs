@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -14,14 +14,12 @@ public class Bird : Agent
     private const float Y_MIN = -47f;
     private const float Y_MAX = 50f;
 
-    private static Bird instance;
-    public static Bird GetInstance() { return instance; }
-
     public event EventHandler OnDied;
     public event EventHandler OnStartedPlaying;
 
     private Rigidbody2D birdRigidbody2D;
     private BehaviorParameters behaviorParameters;
+    private Level level;
     private bool isDead = false;
     private bool hasStarted = false;
 
@@ -30,9 +28,11 @@ public class Bird : Agent
 
     private void Awake()
     {
-        instance = this;
         birdRigidbody2D = GetComponent<Rigidbody2D>();
         behaviorParameters = GetComponent<BehaviorParameters>();
+        // Multi-agent: each bird finds its own Level in the parent hierarchy
+        level = GetComponentInParent<Level>();
+        if (level == null) level = FindFirstObjectByType<Level>();
     }
 
     public override void Initialize() { }
@@ -47,20 +47,17 @@ public class Bird : Agent
         birdRigidbody2D.linearVelocity = Vector2.zero;
         birdRigidbody2D.angularVelocity = 0f;
 
-        if (Level.GetInstance() != null)
-            Level.GetInstance().ResetLevel();
+        if (level != null)
+            level.ResetLevel();
 
         if (IsTraining || behaviorParameters.BehaviorType == BehaviorType.InferenceOnly)
         {
-            // Training or Inference: start immediately
             birdRigidbody2D.bodyType = RigidbodyType2D.Dynamic;
             hasStarted = true;
-            if (OnStartedPlaying != null)
-                OnStartedPlaying(this, EventArgs.Empty);
+            OnStartedPlaying?.Invoke(this, EventArgs.Empty);
         }
         else
         {
-            // Manual/Heuristic mode: wait for first click/space
             birdRigidbody2D.bodyType = RigidbodyType2D.Static;
         }
     }
@@ -70,11 +67,12 @@ public class Bird : Agent
         sensor.AddObservation(transform.position.y / Y_MAX);
         sensor.AddObservation(birdRigidbody2D.linearVelocity.y / JUMP_AMOUNT);
 
-        GameObject nextPipe = FindNextPipe();
-        if (nextPipe != null)
+        // Use Level's pipe list — safe for multi-agent (no cross-environment contamination)
+        Vector2? nextPipe = level?.GetNextPipeInfo(transform.position.x);
+        if (nextPipe.HasValue)
         {
-            sensor.AddObservation((nextPipe.transform.position.x - transform.position.x) / 100f);
-            sensor.AddObservation(nextPipe.transform.position.y / Y_MAX);
+            sensor.AddObservation((nextPipe.Value.x - transform.position.x) / 100f);
+            sensor.AddObservation(nextPipe.Value.y / Y_MAX);
         }
         else
         {
@@ -93,8 +91,7 @@ public class Bird : Agent
             {
                 hasStarted = true;
                 birdRigidbody2D.bodyType = RigidbodyType2D.Dynamic;
-                if (OnStartedPlaying != null)
-                    OnStartedPlaying(this, EventArgs.Empty);
+                OnStartedPlaying?.Invoke(this, EventArgs.Empty);
             }
             Jump();
         }
@@ -106,11 +103,11 @@ public class Bird : Agent
             // Survival reward
             AddReward(0.01f);
 
-            // Gap alignment reward — guide bird toward pipe gap center
-            GameObject nextPipe = FindNextPipe();
-            if (nextPipe != null)
+            // Gap alignment reward
+            Vector2? nextPipe = level?.GetNextPipeInfo(transform.position.x);
+            if (nextPipe.HasValue)
             {
-                float distToGap = Mathf.Abs(transform.position.y - nextPipe.transform.position.y);
+                float distToGap = Mathf.Abs(transform.position.y - nextPipe.Value.y);
                 float normalizedDist = distToGap / (Y_MAX - Y_MIN);
                 AddReward(0.005f * (1f - normalizedDist));
             }
@@ -150,35 +147,10 @@ public class Bird : Agent
         birdRigidbody2D.bodyType = RigidbodyType2D.Static;
         SoundManager.PlaySound(SoundManager.Sound.Lose);
 
-        if (OnDied != null)
-            OnDied(this, EventArgs.Empty);
-
+        OnDied?.Invoke(this, EventArgs.Empty);
         AddReward(-2f);
 
         if (IsTraining)
-        {
-            // Mode entraînement : restart immédiat
             EndEpisode();
-        }
-        // Mode manuel : Game Over s'affiche, pas de restart automatique
-        // Le bouton Retry dans GameOverWindow recharge la scène
-    }
-
-    private GameObject FindNextPipe()
-    {
-        GameObject[] pipes = GameObject.FindGameObjectsWithTag("Pipe");
-        GameObject closest = null;
-        float minDist = float.MaxValue;
-
-        foreach (var pipe in pipes)
-        {
-            float dist = pipe.transform.position.x - transform.position.x;
-            if (dist > -1f && dist < minDist)
-            {
-                minDist = dist;
-                closest = pipe;
-            }
-        }
-        return closest;
     }
 }

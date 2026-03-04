@@ -19,8 +19,7 @@ public class Level : MonoBehaviour
     private const float CLOUD_SPAWN_Y_POSITION = +30f;
     private const float BIRD_X_POSITION = 0f;
 
-    private static Level instance;
-    public static Level GetInstance() { return instance; }
+    private Bird bird;
 
     private List<Transform> groundList;
     private List<Transform> cloudList;
@@ -47,7 +46,6 @@ public class Level : MonoBehaviour
 
     private void Awake()
     {
-        instance = this;
         SpawnInitialGround();
         SpawnInitialClouds();
         pipeList = new List<Pipe>();
@@ -58,8 +56,13 @@ public class Level : MonoBehaviour
 
     private void Start()
     {
-        Bird.GetInstance().OnDied += Bird_OnDied;
-        Bird.GetInstance().OnStartedPlaying += Bird_OnStartedPlaying;
+        bird = GetComponentInChildren<Bird>();
+        if (bird == null) bird = FindFirstObjectByType<Bird>();
+        if (bird != null)
+        {
+            bird.OnDied += Bird_OnDied;
+            bird.OnStartedPlaying += Bird_OnStartedPlaying;
+        }
     }
 
     private void Bird_OnStartedPlaying(object sender, System.EventArgs e)
@@ -234,13 +237,33 @@ public class Level : MonoBehaviour
 
     private void CreateGapPipes(float gapY, float gapSize, float xPosition)
     {
-        CreatePipe(gapY - gapSize * .5f, xPosition, true);
-        CreatePipe(CAMERA_ORTHO_SIZE * 2f - gapY - gapSize * .5f, xPosition, false);
+        // gapY is measured from the bottom of the camera (so center in world = gapY - CAMERA_ORTHO_SIZE)
+        float gapCenterWorld = gapY - CAMERA_ORTHO_SIZE;
+        CreatePipe(gapY - gapSize * .5f, xPosition, true, gapCenterWorld);
+        CreatePipe(CAMERA_ORTHO_SIZE * 2f - gapY - gapSize * .5f, xPosition, false, gapCenterWorld);
         pipesSpawned++;
         SetDifficulty(GetDifficulty());
     }
 
-    private void CreatePipe(float height, float xPosition, bool createBottom)
+    // Returns the X position and gap center Y of the next pipe ahead of birdX
+    public Vector2? GetNextPipeInfo(float birdX)
+    {
+        Pipe closestPipe = null;
+        for (int i = 0; i < pipeList.Count; i++)
+        {
+            Pipe p = pipeList[i];
+            if (!p.IsBottom()) continue;
+            if (p.GetXPosition() > birdX)
+            {
+                if (closestPipe == null || p.GetXPosition() < closestPipe.GetXPosition())
+                    closestPipe = p;
+            }
+        }
+        if (closestPipe == null) return null;
+        return new Vector2(closestPipe.GetXPosition(), closestPipe.GetGapCenterY());
+    }
+
+    private void CreatePipe(float height, float xPosition, bool createBottom, float gapCenterY = 0f)
     {
         Transform pipeHead = Instantiate(GameAssets.GetInstance().pfPipeHead);
         float pipeHeadYPosition;
@@ -274,7 +297,7 @@ public class Level : MonoBehaviour
         pipeBodyBoxCollider.size = new Vector2(PIPE_WIDTH, height);
         pipeBodyBoxCollider.offset = new Vector2(0f, height * .5f);
 
-        Pipe pipe = new Pipe(pipeHead, pipeBody, createBottom);
+        Pipe pipe = new Pipe(pipeHead, pipeBody, createBottom, gapCenterY);
         pipeList.Add(pipe);
     }
 
@@ -286,12 +309,14 @@ public class Level : MonoBehaviour
         private Transform pipeHeadTransform;
         private Transform pipeBodyTransform;
         private bool isBottom;
+        private float gapCenterY;
 
-        public Pipe(Transform pipeHeadTransform, Transform pipeBodyTransform, bool isBottom)
+        public Pipe(Transform pipeHeadTransform, Transform pipeBodyTransform, bool isBottom, float gapCenterY = 0f)
         {
             this.pipeHeadTransform = pipeHeadTransform;
             this.pipeBodyTransform = pipeBodyTransform;
             this.isBottom = isBottom;
+            this.gapCenterY = gapCenterY;
         }
 
         public void Move()
@@ -302,6 +327,7 @@ public class Level : MonoBehaviour
 
         public float GetXPosition() { return pipeHeadTransform.position.x; }
         public bool IsBottom() { return isBottom; }
+        public float GetGapCenterY() { return gapCenterY; }
 
         public void DestroySelf()
         {
